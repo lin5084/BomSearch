@@ -90,8 +90,8 @@ func walkFile(path string, info os.FileInfo, err error) error {
 		return nil
 	}
 
-	// 打开excel，只读模式
-	f, err := excelize.OpenFile(path, excelize.Options{ReadOnly: true})
+	// 【修复点】删掉 excelize.Options{ReadOnly:true}
+	f, err := excelize.OpenFile(path)
 	if err != nil {
 		fmt.Printf("[跳过] 读取失败：%s  err:%v\n", path, err)
 		return nil
