@@ -1,4 +1,4 @@
-name: Build BomSearch Windows EXE
+name: Build BomSearch
 
 on:
   push:
@@ -6,10 +6,14 @@ on:
   workflow_dispatch:
 
 jobs:
-  build-windows:
+  build:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        goos: [windows, linux]
+        goarch: [amd64]
     steps:
-      - name: Checkout source code
+      - name: Checkout
         uses: actions/checkout@v4
 
       - name: Setup Go
@@ -18,19 +22,25 @@ jobs:
           go-version: '1.22'
           cache: true
 
-      - name: Download dependencies
+      - name: go mod tidy
         run: go mod tidy
 
-      - name: Build static windows amd64 exe
+      - name: Build
         env:
-          GOOS: windows
-          GOARCH: amd64
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
           CGO_ENABLED: 0
         run: |
-          go build -ldflags "-s -w" -o BomSearch.exe main.go
+          EXT=""
+          if [ "${{ matrix.goos }}" = "windows" ]; then
+            EXT=".exe"
+          fi
+          go build -ldflags "-s -w" -o BomSearch${EXT} main.go
 
-      - name: Upload artifact
+      - name: Upload ${{ matrix.goos }} artifact
         uses: actions/upload-artifact@v4
         with:
-          name: BomSearch-Win10-amd64
-          path: BomSearch.exe
+          name: BomSearch-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: |
+            BomSearch
+            BomSearch.exe
