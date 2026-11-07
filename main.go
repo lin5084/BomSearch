@@ -6,26 +6,28 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/xuri/excelize/v2"
 )
 
 var (
-	workDir   string
-	keyword   string
-	foundList []string
+	workDir     string
+	keyword     string
+	foundList   []string
+	totalScan   int // 本次实际扫描的SL开头xlsx文件总数
+	startTime   time.Time
 )
 
 func main() {
-	// 参数：只接收1个参数（料号）
 	if len(os.Args) != 2 {
 		fmt.Println("用法：BomSearch 料号")
 		fmt.Println("示例：./BomSearch SL-00001")
 		os.Exit(1)
 	}
 	keyword = os.Args[1]
+	startTime = time.Now()
 
-	// 获取程序所在目录（当前运行目录）
 	var err error
 	workDir, err = os.Getwd()
 	if err != nil {
@@ -37,7 +39,6 @@ func main() {
 	fmt.Printf("搜索料号：%s\n", keyword)
 	fmt.Println("----------------------------------------")
 
-	// 读取当前目录，不递归子文件夹
 	entries, err := os.ReadDir(workDir)
 	if err != nil {
 		fmt.Printf("读取目录失败：%v\n", err)
@@ -50,7 +51,6 @@ func main() {
 		}
 		name := entry.Name()
 		lowerName := strings.ToLower(name)
-		// 条件：SL开头（忽略大小写） + .xlsx后缀 + 跳过临时~$文件
 		if !strings.HasPrefix(strings.ToUpper(name), "SL") {
 			continue
 		}
@@ -61,10 +61,10 @@ func main() {
 			continue
 		}
 
+		totalScan++
 		fullPath := filepath.Join(workDir, name)
 		fmt.Printf("[处理中] %s\n", fullPath)
 
-		// 捕获panic，单个坏文件不卡死整个程序
 		func() {
 			defer func() {
 				if r := recover(); r != nil {
@@ -115,18 +115,22 @@ func main() {
 		}()
 	}
 
-	// 汇总输出
+	duration := time.Since(startTime)
+
+	// 控制台汇总
 	fmt.Println("----------------------------------------")
+	fmt.Printf("此次查询的料号为：%s，共查询了 %d 个文档，共有 %d 个文档包含此料号，查询耗时：%v\n",
+		keyword, totalScan, len(foundList), duration)
 	if len(foundList) == 0 {
 		fmt.Println("未找到任何包含该料号的SL开头BOM文件")
 	} else {
-		fmt.Printf("一共找到 %d 个文件：\n", len(foundList))
+		fmt.Println("查到包含此物料的文档如下：")
 		for _, s := range foundList {
 			fmt.Println(s)
 		}
 	}
 
-	// 结果写入当前目录 BomSearch_Result.txt
+	// 写入结果文件，按你要求的格式
 	outFile := filepath.Join(workDir, "BomSearch_Result.txt")
 	f, err := os.Create(outFile)
 	if err != nil {
@@ -134,6 +138,9 @@ func main() {
 	} else {
 		defer f.Close()
 		w := bufio.NewWriter(f)
+		line1 := fmt.Sprintf("此次查询的料号为%s，共查询了%d个文档，共有%d个文档包含此料号，此次查询耗时%v。查到包含此物料的文档如下。\n",
+			keyword, totalScan, len(foundList), duration)
+		_, _ = w.WriteString(line1)
 		for _, s := range foundList {
 			_, _ = w.WriteString(s + "\n")
 		}
