@@ -12,11 +12,11 @@ import (
 )
 
 var (
-	workDir     string
-	keyword     string
-	foundList   []string
-	totalScan   int // 本次实际扫描的SL开头xlsx文件总数
-	startTime   time.Time
+	workDir   string
+	keyword   string
+	foundList []string
+	totalScan int
+	startTime time.Time
 )
 
 func main() {
@@ -65,6 +65,7 @@ func main() {
 		fullPath := filepath.Join(workDir, name)
 		fmt.Printf("[处理中] %s\n", fullPath)
 
+		hit := false
 		func() {
 			defer func() {
 				if r := recover(); r != nil {
@@ -72,52 +73,46 @@ func main() {
 				}
 			}()
 
-			f, err := excelize.OpenFile(fullPath)
+			// 直接打开zip包，遍历内部xml文件查找文本
+			z, err := excelize.OpenFile(fullPath)
 			if err != nil {
 				fmt.Printf("[跳过] 打开失败：%s  err:%v\n", fullPath, err)
 				return
 			}
 			defer func() {
-				_ = f.Close()
+				_ = z.Close()
 			}()
 
-			hit := false
-			for _, sheet := range f.GetSheetList() {
-				rows, err := f.Rows(sheet)
-				if err != nil {
-					fmt.Printf("[警告] 读取sheet失败：%s -> %s\n", fullPath, sheet)
+			// 遍历zip内所有文件，只读取xl下xml
+			for _, e := range z.ZipReader.File {
+				if !strings.HasPrefix(e.Name, "xl/") || !strings.HasSuffix(e.Name, ".xml") {
 					continue
 				}
-				for rows.Next() {
-					row, err := rows.Columns()
-					if err != nil {
-						continue
-					}
-					for _, cellVal := range row {
-						if strings.Contains(cellVal, keyword) {
-							hit = true
-							break
-						}
-					}
-					if hit {
-						break
-					}
+				rc, err := e.Open()
+				if err != nil {
+					continue
 				}
-				if hit {
+				buf, err := os.ReadFile(rc)
+				_ = rc.Close()
+				if err != nil {
+					continue
+				}
+				if strings.Contains(string(buf), keyword) {
+					hit = true
 					break
 				}
 			}
-
-			if hit {
-				foundList = append(foundList, fullPath)
-				fmt.Printf("====> [找到] %s\n", fullPath)
-			}
 		}()
+
+		if hit {
+			foundList = append(foundList, fullPath)
+			fmt.Printf("====> [找到] %s\n", fullPath)
+		}
 	}
 
 	duration := time.Since(startTime)
 
-	// 控制台汇总
+	// 控制台输出汇总
 	fmt.Println("----------------------------------------")
 	fmt.Printf("此次查询的料号为：%s，共查询了 %d 个文档，共有 %d 个文档包含此料号，查询耗时：%v\n",
 		keyword, totalScan, len(foundList), duration)
@@ -130,7 +125,7 @@ func main() {
 		}
 	}
 
-	// 写入结果文件，按你要求的格式
+	// 写入结果txt
 	outFile := filepath.Join(workDir, "BomSearch_Result.txt")
 	f, err := os.Create(outFile)
 	if err != nil {
