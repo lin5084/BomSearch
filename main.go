@@ -1,14 +1,14 @@
 package main
 
 import (
+	"archive/zip"
 	"bufio"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
-
-	"github.com/xuri/excelize/v2"
 )
 
 var (
@@ -73,26 +73,23 @@ func main() {
 				}
 			}()
 
-			// 直接打开zip包，遍历内部xml文件查找文本
-			z, err := excelize.OpenFile(fullPath)
+			zr, err := zip.OpenReader(fullPath)
 			if err != nil {
-				fmt.Printf("[跳过] 打开失败：%s  err:%v\n", fullPath, err)
+				fmt.Printf("[跳过] 打开失败（不是合法xlsx/zip）：%s  err:%v\n", fullPath, err)
 				return
 			}
-			defer func() {
-				_ = z.Close()
-			}()
+			defer zr.Close()
 
-			// 遍历zip内所有文件，只读取xl下xml
-			for _, e := range z.ZipReader.File {
-				if !strings.HasPrefix(e.Name, "xl/") || !strings.HasSuffix(e.Name, ".xml") {
+			for _, f := range zr.File {
+				// 只读取xl/下面的xml文件（工作表xml、sharedStrings.xml）
+				if !strings.HasPrefix(f.Name, "xl/") || !strings.HasSuffix(f.Name, ".xml") {
 					continue
 				}
-				rc, err := e.Open()
+				rc, err := f.Open()
 				if err != nil {
 					continue
 				}
-				buf, err := os.ReadFile(rc)
+				buf, err := io.ReadAll(rc)
 				_ = rc.Close()
 				if err != nil {
 					continue
@@ -112,7 +109,7 @@ func main() {
 
 	duration := time.Since(startTime)
 
-	// 控制台输出汇总
+	// 控制台汇总
 	fmt.Println("----------------------------------------")
 	fmt.Printf("此次查询的料号为：%s，共查询了 %d 个文档，共有 %d 个文档包含此料号，查询耗时：%v\n",
 		keyword, totalScan, len(foundList), duration)
